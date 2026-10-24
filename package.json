@@ -1,0 +1,49 @@
+{
+  "name": "distributed_job_processor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "tsx watch src/api/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/api/server.js",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run build && npm run lint",
+    "postinstall": "prisma skills sync || exit 0",
+    "test:db": "tsx src/db/check-connection.ts",
+    "worker": "tsx src/worker/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "bullmq": "^6.4.1",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.13.0",
+    "prettier": "^3.9.10",
+    "prisma": "^7.10.1",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}
