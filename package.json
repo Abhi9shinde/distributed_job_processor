@@ -15,7 +15,8 @@
     "check": "npm run build && npm run lint",
     "postinstall": "prisma skills sync || exit 0",
     "test:db": "tsx src/db/check-connection.ts",
-    "worker": "tsx src/worker/index.ts"
+    "worker": "tsx src/worker/index.ts",
+    "outbox:publish": "tsx src/outbox/run-publisher.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,15 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findUniqueMock, createMock } = vi.hoisted(() => ({
+const { findUniqueMock, createMock, transactionMock, outboxCreateMock } = vi.hoisted(() => ({
   findUniqueMock: vi.fn(),
   createMock: vi.fn(),
+  transactionMock: vi.fn(),
+  outboxCreateMock: vi.fn(),
 }));
 
 vi.mock("../../src/db/prisma.js", () => ({
   prisma: {
+    $transaction: transactionMock,
     job: {
       findUnique: findUniqueMock,
       create: createMock,
+    },
+    outBoxEvent: {
+      create: outboxCreateMock,
     },
   },
 }));
@@ -30,11 +36,28 @@ describe("Jobs API", () => {
   });
 
   it("creates a job and returns 201", async () => {
+    transactionMock.mockImplementation(async (callback) =>
+      callback({
+        job: {
+          create: createMock,
+        },
+        outBoxEvent: {
+          create: outboxCreateMock,
+        },
+      }),
+    );
     createMock.mockResolvedValue({
       id: "job-123",
       type: "email",
       payload: { to: "test@example.com" },
       status: "QUEUED",
+      maxAttempts: 3,
+    });
+    outboxCreateMock.mockResolvedValue({
+      id: "outbox-123",
+      jobId: "job-123",
+      eventType: "JOB_CREATED",
+      status: "PENDING",
     });
 
     const response = await request(app)
@@ -45,8 +68,10 @@ describe("Jobs API", () => {
       });
 
     expect(response.status).toBe(201);
-    expect(response.body.id).toBe("job-123");
+    expect(response.body.job.id).toBe("job-123");
     expect(createMock).toHaveBeenCalledOnce();
+    expect(outboxCreateMock).toHaveBeenCalledOnce();
+    expect(transactionMock).toHaveBeenCalledOnce();
   });
 
   it("rejects invalid job input", async () => {

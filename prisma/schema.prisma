@@ -19,13 +19,39 @@ enum JobStatus {
   FAILED
 }
 
+enum OutBoxStatus {
+  PENDING
+  PUBLISHED
+}
+
 model Job {
-  id          String    @id @default(cuid())
-  type        String //identifies job 
-  payload     Json
-  status      JobStatus @default(QUEUED)
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(3)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String        @id @default(cuid())
+  type         String //identifies job 
+  payload      Json
+  status       JobStatus     @default(QUEUED)
+  attempts     Int           @default(0)
+  maxAttempts  Int           @default(3)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  outboxEvents OutBoxEvent[]
+}
+
+model OutBoxEvent {
+  id           String       @id @default(cuid())
+  jobId        String //foreign key to Job OR identifies the job that generated this event
+  eventType    String
+  payload      Json
+  status       OutBoxStatus @default(PENDING)
+  attempts     Int          @default(0) //these are publish attempts, not job attempts
+  lastError    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  publishedAt  DateTime?
+  claimToken   String?
+  claimedUntil DateTime?
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([jobId])
 }
