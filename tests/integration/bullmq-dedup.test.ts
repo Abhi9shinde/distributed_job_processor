@@ -38,4 +38,29 @@ describe("BullMQ duplicate enqueue behavior", () => {
 
     expect(matchingJobs).toHaveLength(1);
   }, 30_000);
+
+  it("allows the same job ID to be added again after removal", async () => {
+    const stableJobId = "removed-job-123";
+
+    const firstJob = await queue.add(
+      "process-job",
+      { jobId: stableJobId, attempt: 1 },
+      { jobId: stableJobId, removeOnComplete: false },
+    );
+
+    // Simulate the completed job being removed from Redis.
+    await firstJob.remove();
+
+    expect(await queue.getJob(stableJobId)).toBeUndefined();
+
+    // The same ID can now be accepted again.
+    const secondJob = await queue.add(
+      "process-job",
+      { jobId: stableJobId, attempt: 2 },
+      { jobId: stableJobId, removeOnComplete: false },
+    );
+
+    expect(secondJob.id).toBe(stableJobId);
+    expect(await queue.getJob(stableJobId)).toBeDefined();
+  }, 30_000);
 });

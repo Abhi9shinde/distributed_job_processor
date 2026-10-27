@@ -55,3 +55,24 @@ model OutBoxEvent {
   @@index([status, createdAt])
   @@index([jobId])
 }
+
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique // this is the key that identifies the idempotent operation
+  jobId          String
+  result         Json?
+  createdAt      DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model JobEffect {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique
+  jobId          String
+  effectType     String
+  payload        Json
+  createdAt      DateTime @default(now())
+
+  @@index([jobId])
+}

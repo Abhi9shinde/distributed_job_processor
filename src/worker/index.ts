@@ -1,5 +1,8 @@
 import { Worker } from "bullmq";
-import { prisma } from "../db/prisma.js";
+// import { prisma } from "../db/prisma.js";
+// import { processJobIdempotently } from "./process-job.js";
+import { handleJob } from "./handle-job.js";
+import { handleJobFailure } from "./handle-job-failure.js";
 
 const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
 const redisPort = Number(process.env.REDIS_PORT ?? 6379);
@@ -12,23 +15,7 @@ const worker = new Worker(
       type: string;
       payload: unknown;
     };
-    //updating jobStatus to processing
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: "PROCESSING" },
-    });
-    console.log(`Processing job ${jobId} of type ${type} with payload:`, payload);
-
-    // Temporary handler: simulate a small unit of work.
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    //updating jobStatus to completed
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: "COMPLETED" },
-    });
-    console.log(`Completed job ${jobId}`);
-    return { success: true };
+    return handleJob({ jobId, type, payload });
   },
   {
     connection: {
@@ -38,11 +25,19 @@ const worker = new Worker(
   },
 );
 
-worker.on("completed", (job) => {
-  console.log(`Job ${job.id} has been completed.`);
+worker.on("completed", (queueJob) => {
+  console.log(`Job ${queueJob.id} has been completed.`);
 });
-worker.on("failed", (job, err) => {
-  console.error(`Job ${job?.id} has failed with error:`, err);
+
+worker.on("failed", async (queueJob, err) => {
+  console.error(`Job ${queueJob?.id} has failed with error:`, err);
+  if (!queueJob) return;
+
+  try {
+    await handleJobFailure(queueJob, err);
+  } catch (err) {
+    console.error(`Error handling job failure for job ${queueJob.id}:`, err);
+  }
 });
 
 console.log("Worker Started and listening for jobs...");
