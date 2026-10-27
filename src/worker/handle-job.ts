@@ -2,29 +2,49 @@
 
 import { prisma } from "../db/prisma.js";
 import { processJobIdempotently } from "./process-job.js";
+import { handleJobFailure } from "./handle-job-failure.js";
 
-export async function handleJob(data: { jobId: string; type: string; payload: unknown }) {
-  const { jobId, type, payload } = data;
+export async function handleJob(data: {
+  jobId: string;
+  type: string;
+  payload: unknown;
+  attemptId: string;
+  attemptsMade: number;
+  maxAttempts: number;
+}) {
+  const { jobId, type, payload, attemptId, attemptsMade, maxAttempts } = data;
 
-  //updating jobStatus to processing
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: "PROCESSING" },
-  });
   console.log(`Processing job ${jobId} of type ${type} with payload:`, payload);
+  try {
+    // Apply the business effect idempotently.
+    const result = await processJobIdempotently(jobId);
 
-  // Apply the business effect idempotently.
-  const result = await processJobIdempotently(jobId);
-
-  //updating jobStatus to completed
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: "COMPLETED" },
-  });
-  if (result.processed) {
-    console.log(`Completed job ${jobId}`);
-  } else {
-    console.log(`Job ${jobId} was already processed; skipping duplicate effect.`);
+    //updating jobStatus to completed
+    const completion = await prisma.job.updateMany({
+      where: {
+        id: jobId,
+        currentAttemptId: attemptId,
+        status: "PROCESSING",
+      },
+      data: {
+        status: "COMPLETED",
+        currentAttemptId: null,
+      },
+    });
+    if (completion.count === 0) {
+      console.log(`Attempt ${attemptId} no longer owns job ${jobId}.`);
+    } else if (result.processed) {
+      console.log(`Completed job ${jobId}`);
+    } else {
+      console.log(`Job ${jobId} was already processed; skipping duplicate effect.`);
+    }
+    return result;
+  } catch (error) {
+    await handleJobFailure(
+      { data: { jobId }, attemptsMade: attemptsMade + 1, opts: { attempts: maxAttempts } },
+      error instanceof Error ? error : new Error(String(error)),
+      attemptId,
+    );
+    throw error; // rethrow to let the worker know the job failed
   }
-  return result;
 }

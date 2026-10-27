@@ -15,6 +15,7 @@ datasource db {
 enum JobStatus {
   QUEUED
   PROCESSING
+  RETRYING
   COMPLETED
   FAILED
 }
@@ -25,15 +26,16 @@ enum OutBoxStatus {
 }
 
 model Job {
-  id           String        @id @default(cuid())
-  type         String //identifies job 
-  payload      Json
-  status       JobStatus     @default(QUEUED)
-  attempts     Int           @default(0)
-  maxAttempts  Int           @default(3)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  outboxEvents OutBoxEvent[]
+  id               String        @id @default(cuid())
+  type             String //identifies job 
+  payload          Json
+  status           JobStatus     @default(QUEUED)
+  attempts         Int           @default(0)
+  maxAttempts      Int           @default(3)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  outboxEvents     OutBoxEvent[]
+  currentAttemptId String?
 }
 
 model OutBoxEvent {

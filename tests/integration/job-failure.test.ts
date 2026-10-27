@@ -11,12 +11,15 @@ describe("Job failure handling", () => {
       await prisma.idempotencyRecord.deleteMany({
         where: { jobId: { in: createdJobIds } },
       });
+
       await prisma.jobEffect.deleteMany({
         where: { jobId: { in: createdJobIds } },
       });
+
       await prisma.outBoxEvent.deleteMany({
         where: { jobId: { in: createdJobIds } },
       });
+
       await prisma.job.deleteMany({
         where: { id: { in: createdJobIds } },
       });
@@ -38,6 +41,15 @@ describe("Job failure handling", () => {
   it("does not mark a job FAILED while retries remain", async () => {
     const job = await createTestJob();
 
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "PROCESSING",
+        attempts: 1,
+        currentAttemptId: "attempt-1",
+      },
+    });
+
     await handleJobFailure(
       {
         id: "queue-job-retry",
@@ -46,17 +58,58 @@ describe("Job failure handling", () => {
         opts: { attempts: 3 },
       },
       new Error("Temporary failure"),
+      "attempt-1",
     );
 
     const updated = await prisma.job.findUniqueOrThrow({
       where: { id: job.id },
     });
 
-    expect(updated.status).not.toBe("FAILED");
+    expect(updated.status).toBe("RETRYING");
+  }, 30_000);
+
+  it("marks a job RETRYING while retries remain", async () => {
+    const job = await createTestJob();
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "PROCESSING",
+        attempts: 1,
+        currentAttemptId: "attempt-1",
+      },
+    });
+
+    await handleJobFailure(
+      {
+        id: "queue-job-retrying",
+        data: { jobId: job.id },
+        attemptsMade: 1,
+        opts: { attempts: 3 },
+      },
+      new Error("Temporary failure"),
+      "attempt-1",
+    );
+
+    const updated = await prisma.job.findUniqueOrThrow({
+      where: { id: job.id },
+    });
+
+    expect(updated.status).toBe("RETRYING");
+    expect(updated.currentAttemptId).toBeNull();
   }, 30_000);
 
   it("marks a job FAILED after attempts are exhausted", async () => {
     const job = await createTestJob();
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "PROCESSING",
+        attempts: 3,
+        currentAttemptId: "attempt-3",
+      },
+    });
 
     await handleJobFailure(
       {
@@ -66,6 +119,7 @@ describe("Job failure handling", () => {
         opts: { attempts: 3 },
       },
       new Error("Permanent failure"),
+      "attempt-3",
     );
 
     const updated = await prisma.job.findUniqueOrThrow({
@@ -73,5 +127,39 @@ describe("Job failure handling", () => {
     });
 
     expect(updated.status).toBe("FAILED");
+    expect(updated.currentAttemptId).toBeNull();
+  }, 30_000);
+
+  it("does not let a stale failure overwrite a newer attempt", async () => {
+    const job = await createTestJob();
+
+    // Simulate attempt 2 currently owning the job.
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "PROCESSING",
+        attempts: 2,
+        currentAttemptId: "attempt-2",
+      },
+    });
+
+    // Attempt 1 fails late. Its ID must not match the current owner.
+    await handleJobFailure(
+      {
+        id: "queue-job-stale",
+        data: { jobId: job.id },
+        attemptsMade: 1,
+        opts: { attempts: 3 },
+      },
+      new Error("Late failure from attempt 1"),
+      "attempt-1",
+    );
+
+    const updated = await prisma.job.findUniqueOrThrow({
+      where: { id: job.id },
+    });
+
+    expect(updated.status).toBe("PROCESSING");
+    expect(updated.currentAttemptId).toBe("attempt-2");
   }, 30_000);
 });

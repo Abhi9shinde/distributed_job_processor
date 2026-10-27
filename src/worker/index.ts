@@ -2,7 +2,8 @@ import { Worker } from "bullmq";
 // import { prisma } from "../db/prisma.js";
 // import { processJobIdempotently } from "./process-job.js";
 import { handleJob } from "./handle-job.js";
-import { handleJobFailure } from "./handle-job-failure.js";
+// import { handleJobFailure } from "./handle-job-failure.js";
+import { startJobAttempt } from "./start-job-attempt.js";
 
 const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
 const redisPort = Number(process.env.REDIS_PORT ?? 6379);
@@ -15,7 +16,16 @@ const worker = new Worker(
       type: string;
       payload: unknown;
     };
-    return handleJob({ jobId, type, payload });
+
+    const attemptId = await startJobAttempt(jobId);
+    return handleJob({
+      jobId,
+      type,
+      payload,
+      attemptId,
+      attemptsMade: queueJob.attemptsMade,
+      maxAttempts: queueJob.opts.attempts ?? 1,
+    });
   },
   {
     connection: {
@@ -32,12 +42,12 @@ worker.on("completed", (queueJob) => {
 worker.on("failed", async (queueJob, err) => {
   console.error(`Job ${queueJob?.id} has failed with error:`, err);
   if (!queueJob) return;
-
-  try {
-    await handleJobFailure(queueJob, err);
-  } catch (err) {
-    console.error(`Error handling job failure for job ${queueJob.id}:`, err);
-  }
+  //this is done in handle-job
+  // try {
+  //   await handleJobFailure(queueJob, err);
+  // } catch (err) {
+  //   console.error(`Error handling job failure for job ${queueJob.id}:`, err);
+  // }
 });
 
 console.log("Worker Started and listening for jobs...");
