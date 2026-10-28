@@ -1,9 +1,10 @@
 import { Worker } from "bullmq";
-// import { prisma } from "../db/prisma.js";
+import { prisma } from "../db/prisma.js";
 // import { processJobIdempotently } from "./process-job.js";
 import { handleJob } from "./handle-job.js";
 // import { handleJobFailure } from "./handle-job-failure.js";
 import { startJobAttempt } from "./start-job-attempt.js";
+import { createGracefulShutdown } from "./graceful-shutdown.js";
 
 const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
 const redisPort = Number(process.env.REDIS_PORT ?? 6379);
@@ -49,5 +50,39 @@ worker.on("failed", async (queueJob, err) => {
   //   console.error(`Error handling job failure for job ${queueJob.id}:`, err);
   // }
 });
+
+// let isShuttingDown = false;
+// async function gracefulShutdown(signal: string): Promise<void> {
+//   if (isShuttingDown) {
+//     console.log(`Received ${signal} signal again. Already shutting down...`);
+//     return;
+//   }
+
+//   isShuttingDown = true;
+//   console.log(`Received ${signal} signal. Shutting down gracefully...`);
+
+//   try {
+//     //stop accepting new jobs
+//     await worker.close();
+//     console.log("BullMQ worker closed");
+
+//     //disconnect from the database
+//     await prisma.$disconnect();
+//     console.log("Prisma client disconnected");
+
+//     console.log("Graceful shutdown complete. Exiting process.");
+//   } catch (err) {
+//     console.error("Error during graceful shutdown:", err);
+//     process.exitCode = 1;
+//   }
+// }
+
+const gracefulShutdown = createGracefulShutdown({
+  closeWorker: () => worker.close(),
+  disconnectDatabase: () => prisma.$disconnect(),
+});
+
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
 
 console.log("Worker Started and listening for jobs...");
