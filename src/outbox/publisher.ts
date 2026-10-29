@@ -27,7 +27,7 @@ export async function publishPendingOutboxEvents(): Promise<void> {
     try {
       //adding to the queue
       await jobQueue.add(event.eventType, event.payload, {
-        jobId: event.jobId,
+        jobId: `outbox-${event.id}`, //bec
         attempts: event.job.maxAttempts,
         backoff: { type: "exponential", delay: 1000 },
         removeOnComplete: 1000,

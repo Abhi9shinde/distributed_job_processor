@@ -25,6 +25,7 @@ export async function handleJobFailure(
     data: {
       status: nextStatus,
       currentAttemptId: null,
+      processingLeaseExpiresAt: null,
     },
   });
 
