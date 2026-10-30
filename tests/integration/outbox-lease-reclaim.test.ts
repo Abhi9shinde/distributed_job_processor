@@ -1,6 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/db/prisma.js";
 import { claimPendingEvents } from "../../src/outbox/claim-events.js";
+import { jobQueue } from "../../src/queue/job-queue.js";
+import { publishPendingOutboxEvents } from "../../src/outbox/publisher.js";
 
 describe("Outbox lease reclaim", () => {
   afterAll(async () => {
@@ -84,4 +86,82 @@ describe("Outbox lease reclaim", () => {
       });
     }
   }, 15000);
+
+  it("does not create a duplicate BullMQ job after a publisher crash", async () => {
+    const job = await prisma.job.create({
+      data: {
+        type: "OUTBOX_CRASH_WINDOW_TEST",
+        payload: { test: true },
+        status: "QUEUED",
+      },
+    });
+
+    const event = await prisma.outBoxEvent.create({
+      data: {
+        jobId: job.id,
+        eventType: "JOB_CREATED",
+        payload: {
+          jobId: job.id,
+          type: job.type,
+          payload: job.payload,
+        },
+        status: "PENDING",
+      },
+    });
+
+    const queueJobId = `outbox-${event.id}`;
+
+    try {
+      // Publisher A claims the event.
+      const claimA = await claimPendingEvents();
+
+      expect(claimA.events.some((item) => item.id === event.id)).toBe(true);
+
+      // Publisher A successfully adds the job to BullMQ.
+      await jobQueue.add(event.eventType, event.payload, {
+        jobId: queueJobId,
+        attempts: job.maxAttempts,
+        backoff: { type: "exponential", delay: 1000 },
+        removeOnComplete: 1000,
+        removeOnFail: false,
+      });
+
+      // Simulate a crash: A never marks the outbox event as PUBLISHED.
+      // Expire its lease so another publisher can reclaim it.
+      await prisma.outBoxEvent.update({
+        where: { id: event.id },
+        data: {
+          claimedUntil: new Date(Date.now() - 1_000),
+        },
+      });
+
+      // Publisher B reclaims the event and runs the actual publisher logic.
+      await publishPendingOutboxEvents();
+
+      // The event should eventually be marked as PUBLISHED.
+      const updatedEvent = await prisma.outBoxEvent.findUniqueOrThrow({
+        where: { id: event.id },
+      });
+
+      expect(updatedEvent.status).toBe("PUBLISHED");
+
+      // The original BullMQ job should still exist under the same stable ID.
+      const queueJob = await jobQueue.getJob(queueJobId);
+
+      expect(queueJob).toBeDefined();
+      expect(queueJob?.id).toBe(queueJobId);
+      expect(queueJob?.data).toEqual(event.payload);
+    } finally {
+      const queueJob = await jobQueue.getJob(queueJobId);
+      if (queueJob) await queueJob.remove();
+
+      await prisma.outBoxEvent.deleteMany({
+        where: { id: event.id },
+      });
+
+      await prisma.job.deleteMany({
+        where: { id: job.id },
+      });
+    }
+  }, 15_000);
 });

@@ -62,6 +62,7 @@ export async function handleJob(data: {
         status: "COMPLETED",
         currentAttemptId: null,
         processingLeaseExpiresAt: null,
+        lastError: null,
       },
     });
     if (completion.count === 0) {

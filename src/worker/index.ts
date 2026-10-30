@@ -81,7 +81,7 @@ worker.on("failed", async (queueJob, err) => {
 // }
 
 const gracefulShutdown = createGracefulShutdown({
-  closeWorker: () => worker.close(),
+  stopProcessing: () => worker.close(),
   disconnectDatabase: () => prisma.$disconnect(),
 });
 

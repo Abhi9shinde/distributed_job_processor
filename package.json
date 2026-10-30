@@ -16,7 +16,8 @@
     "postinstall": "prisma skills sync || exit 0",
     "test:db": "tsx src/db/check-connection.ts",
     "worker": "tsx src/worker/index.ts",
-    "outbox:publish": "tsx src/outbox/run-publisher.ts"
+    "outbox:publish": "tsx src/outbox/run-publisher.ts",
+    "recovery": "tsx src/worker/run-recovery.ts"
   },
   "keywords": [],
   "author": "",

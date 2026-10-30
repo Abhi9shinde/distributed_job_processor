@@ -1,5 +1,5 @@
 type ShutdownDependencies = {
-  closeWorker: () => Promise<void>;
+  stopProcessing: () => Promise<void>;
   disconnectDatabase: () => Promise<void>;
 };
 
@@ -20,7 +20,7 @@ export function createGracefulShutdown(
 
     try {
       //stop accepting new jobs
-      await dependencies.closeWorker();
+      await dependencies.stopProcessing();
       log.log("BullMQ worker closed");
 
       //disconnect from the database

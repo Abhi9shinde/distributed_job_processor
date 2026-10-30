@@ -11,7 +11,7 @@ describe("createGracefulShutdown", () => {
 
     const shutdown = createGracefulShutdown(
       {
-        closeWorker: async () => {
+        stopProcessing: async () => {
           events.push("worker-closed");
         },
         disconnectDatabase: async () => {
@@ -32,7 +32,7 @@ describe("createGracefulShutdown", () => {
 
     const shutdown = createGracefulShutdown(
       {
-        closeWorker: vi.fn().mockRejectedValue(new Error("Worker close failed")),
+        stopProcessing: vi.fn().mockRejectedValue(new Error("Worker close failed")),
         disconnectDatabase,
       },
       { log: vi.fn(), error: errorLog },
@@ -43,15 +43,14 @@ describe("createGracefulShutdown", () => {
     expect(disconnectDatabase).not.toHaveBeenCalled();
     expect(errorLog).toHaveBeenCalled();
     expect(
-      (globalThis as typeof globalThis & { process: { exitCode: number } })
-        .process.exitCode,
+      (globalThis as typeof globalThis & { process: { exitCode: number } }).process.exitCode,
     ).toBe(1);
   });
 
   it("does not run shutdown twice", async () => {
     let releaseWorker!: () => void;
 
-    const closeWorker = vi.fn(
+    const stopProcessing = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           releaseWorker = resolve;
@@ -62,7 +61,7 @@ describe("createGracefulShutdown", () => {
 
     const shutdown = createGracefulShutdown(
       {
-        closeWorker,
+        stopProcessing,
         disconnectDatabase,
       },
       { log: vi.fn(), error: vi.fn() },
@@ -73,7 +72,7 @@ describe("createGracefulShutdown", () => {
 
     await shutdown("SIGTERM");
 
-    expect(closeWorker).toHaveBeenCalledTimes(1);
+    expect(stopProcessing).toHaveBeenCalledTimes(1);
     expect(disconnectDatabase).not.toHaveBeenCalled();
 
     releaseWorker();

@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../../src/db/prisma.js";
 import { handleJob } from "../../src/worker/handle-job.js";
+import { startJobAttempt } from "../../src/worker/start-job-attempt.js";
 
 describe("Worker handler retry recovery", () => {
   let jobId: string | undefined;
@@ -59,4 +60,77 @@ describe("Worker handler retry recovery", () => {
 
     expect(finalJob.status).toBe("COMPLETED");
   }, 30_000);
+
+  it("allows only one worker to claim the same job", async () => {
+    const job = await prisma.job.create({
+      data: {
+        type: `concurrent-claim-${randomUUID()}`,
+        payload: { test: true },
+        status: "QUEUED",
+      },
+    });
+
+    try {
+      const results = await Promise.all([startJobAttempt(job.id), startJobAttempt(job.id)]);
+
+      const successfulClaims = results.filter((attemptId) => attemptId !== null);
+
+      const rejectedClaims = results.filter((attemptId) => attemptId === null);
+
+      expect(successfulClaims).toHaveLength(1);
+      expect(rejectedClaims).toHaveLength(1);
+
+      const updatedJob = await prisma.job.findUniqueOrThrow({
+        where: { id: job.id },
+      });
+
+      expect(updatedJob.status).toBe("PROCESSING");
+      expect(updatedJob.currentAttemptId).toBe(successfulClaims[0]);
+      expect(updatedJob.attempts).toBe(1);
+    } finally {
+      await prisma.job.deleteMany({
+        where: { id: job.id },
+      });
+    }
+  }, 15_000);
+
+  it("clears lastError when a retried job completes successfully", async () => {
+    const attemptId = crypto.randomUUID();
+
+    const job = await prisma.job.create({
+      data: {
+        type: "RETRY_SUCCESS_TEST",
+        payload: {},
+        status: "PROCESSING",
+        attempts: 2,
+        currentAttemptId: attemptId,
+        processingLeaseExpiresAt: new Date(Date.now() + 60_000),
+        lastError: "Previous attempt failed",
+      },
+    });
+
+    try {
+      await handleJob({
+        jobId: job.id,
+        type: job.type,
+        payload: job.payload,
+        attemptId,
+        attemptsMade: 1,
+        maxAttempts: 3,
+      });
+
+      const updatedJob = await prisma.job.findUniqueOrThrow({
+        where: { id: job.id },
+      });
+
+      expect(updatedJob.status).toBe("COMPLETED");
+      expect(updatedJob.lastError).toBeNull();
+      expect(updatedJob.currentAttemptId).toBeNull();
+      expect(updatedJob.processingLeaseExpiresAt).toBeNull();
+    } finally {
+      await prisma.jobEffect.deleteMany({ where: { jobId: job.id } });
+      await prisma.idempotencyRecord.deleteMany({ where: { jobId: job.id } });
+      await prisma.job.deleteMany({ where: { id: job.id } });
+    }
+  }, 15_000);
 });
