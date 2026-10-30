@@ -37,6 +37,7 @@ model Job {
   outboxEvents             OutBoxEvent[]
   currentAttemptId         String?
   processingLeaseExpiresAt DateTime?
+  lastError                String?
 
   @@index([status, processingLeaseExpiresAt])
 }

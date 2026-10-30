@@ -86,6 +86,9 @@ describe("Expired processing job recovery", () => {
         };
 
         const newAttemptId = await startJobAttempt(jobId);
+        if (!newAttemptId) {
+          return { skipped: true };
+        }
 
         return handleJob({
           jobId,

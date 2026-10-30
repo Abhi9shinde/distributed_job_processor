@@ -127,6 +127,7 @@ describe("Job failure handling", () => {
     });
 
     expect(updated.status).toBe("FAILED");
+    expect(updated.lastError).toBe("Permanent failure");
     expect(updated.currentAttemptId).toBeNull();
   }, 30_000);
 

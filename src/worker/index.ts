@@ -19,6 +19,9 @@ const worker = new Worker(
     };
 
     const attemptId = await startJobAttempt(jobId);
+    if (!attemptId) {
+      return { skipped: true, reason: "Job may not be in a valid state to start processing." };
+    }
     return handleJob({
       jobId,
       type,

@@ -89,4 +89,75 @@ jobRouter.get("/:id", async (req, res) => {
   }
 });
 
+// Manually retry a failed job
+jobRouter.post("/:id/retry", async (req, res) => {
+  const jobId = req.params.id as string;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const job = await tx.job.findUnique({
+        where: { id: jobId },
+      });
+
+      if (!job) {
+        return { kind: "not_found" as const };
+      }
+
+      if (job.status !== "FAILED") {
+        return { kind: "not_failed" as const, status: job.status };
+      }
+
+      const updated = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          status: "FAILED",
+        },
+        data: {
+          status: "RETRYING",
+          attempts: 0,
+          lastError: null,
+        },
+      });
+
+      if (updated.count !== 1) {
+        return { kind: "not_failed" as const };
+      }
+
+      await tx.outBoxEvent.create({
+        data: {
+          jobId: job.id,
+          eventType: "JOB_CREATED",
+          payload: {
+            jobId: job.id,
+            type: job.type,
+            payload: job.payload,
+          },
+        },
+      });
+
+      return { kind: "retried" as const };
+    });
+
+    if (result.kind === "not_found") {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
+    if (result.kind === "not_failed") {
+      return res.status(409).json({
+        error: "Only failed jobs can be manually retried",
+        status: "status" in result ? result.status : undefined,
+      });
+    }
+
+    return res.status(202).json({
+      message: "Job queued for retry",
+      jobId,
+      status: "RETRYING",
+    });
+  } catch (err) {
+    console.error("Error retrying job:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default jobRouter;

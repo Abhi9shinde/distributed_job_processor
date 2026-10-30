@@ -55,6 +55,9 @@ describe("BullMQ retry lifecycle", () => {
         };
 
         const attemptId = await startJobAttempt(id);
+        if (!attemptId) {
+          return { skipped: true };
+        }
         processorAttempts++;
 
         try {
