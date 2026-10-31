@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "../db/prisma.js";
 
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 50;
 const LEASE_DURATION_MS = 30_000;
 
 export async function claimPendingEvents() {

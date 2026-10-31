@@ -5,3 +5,4 @@ dist/
 !.env.example
 coverage/
 /src/generated/prisma
+redis-backup.rdb

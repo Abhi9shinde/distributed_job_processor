@@ -2,7 +2,7 @@ import { prisma } from "../db/prisma.js";
 import { publishPendingOutboxEvents } from "./publisher.js";
 import { createGracefulShutdown } from "../worker/graceful-shutdown.js";
 
-const PUBLISH_INTERVAL_MS = 3_000;
+const PUBLISH_INTERVAL_MS = 500;
 
 let isRunning = false; // prevents multiple publisher cycles from running at the same time.like a lock of some sort
 let isShuttingDown = false; //prevents new cycles from starting during shutdown.
